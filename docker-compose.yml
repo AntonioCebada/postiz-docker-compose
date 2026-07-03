@@ -3,12 +3,18 @@ services:
     image: ghcr.io/gitroomhq/postiz-app:latest
     container_name: postiz
     restart: always
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.postizz.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.postizz.entrypoints=websecure"
+      - "traefik.http.routers.postizz.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.postizz.loadbalancer.server.port=5000"
     environment:
       # === Required Settings
-      MAIN_URL: 'http://localhost:5000'
-      FRONTEND_URL: 'http://localhost:5000'
-      NEXT_PUBLIC_BACKEND_URL: 'http://localhost:5000/api'
-      JWT_SECRET: 'jlkasfdjkcIJINFEKjksaffjasjasf'
+      MAIN_URL: 'http://${DOMAIN}'
+      FRONTEND_URL: 'http://${DOMAIN}'
+      NEXT_PUBLIC_BACKEND_URL: 'http://${DOMAIN}/api'
+      JWT_SECRET: "${JWT_SECRET}"
       DATABASE_URL: 'postgresql://postiz-user:postiz-password@postiz-postgres:5432/postiz-db-local'
       REDIS_URL: 'redis://postiz-redis:6379'
       BACKEND_INTERNAL_URL: 'http://localhost:3000'
@@ -65,16 +71,16 @@ services:
       MASTODON_CLIENT_SECRET: ''
 
       # === OAuth & Authentik Settings
-      # NEXT_PUBLIC_POSTIZ_OAUTH_DISPLAY_NAME: 'Authentik'
-      # NEXT_PUBLIC_POSTIZ_OAUTH_LOGO_URL: 'https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/authentik.png'
-      # POSTIZ_GENERIC_OAUTH: 'false'
-      # POSTIZ_OAUTH_URL: 'https://auth.example.com'
-      # POSTIZ_OAUTH_AUTH_URL: 'https://auth.example.com/application/o/authorize'
-      # POSTIZ_OAUTH_TOKEN_URL: 'https://auth.example.com/application/o/token'
-      # POSTIZ_OAUTH_USERINFO_URL: 'https://authentik.example.com/application/o/userinfo'
-      # POSTIZ_OAUTH_CLIENT_ID: ''
-      # POSTIZ_OAUTH_CLIENT_SECRET: ''
-      # POSTIZ_OAUTH_SCOPE: "openid profile email"  # Optional: uncomment to override default scope
+      NEXT_PUBLIC_POSTIZ_OAUTH_DISPLAY_NAME: 'Authentik'
+      NEXT_PUBLIC_POSTIZ_OAUTH_LOGO_URL: 'https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/authentik.png'
+      POSTIZ_GENERIC_OAUTH: 'false'
+      POSTIZ_OAUTH_URL: 'https://auth.example.com'
+      POSTIZ_OAUTH_AUTH_URL: 'https://auth.example.com/application/o/authorize'
+      POSTIZ_OAUTH_TOKEN_URL: 'https://auth.example.com/application/o/token'
+      POSTIZ_OAUTH_USERINFO_URL: 'https://authentik.example.com/application/o/userinfo'
+      POSTIZ_OAUTH_CLIENT_ID: ''
+      POSTIZ_OAUTH_CLIENT_SECRET: ''
+      POSTIZ_OAUTH_SCOPE: "openid profile email"  # Optional: uncomment to override default scope
 
       # === Sentry
 
@@ -112,11 +118,12 @@ services:
     volumes:
       - postiz-config:/config/
       - postiz-uploads:/uploads/
-    ports:
-      - "4007:5000"
+    #ports:
+      #- "4007:5000"
     networks:
       - postiz-network
       - temporal-network
+      - traefik
     healthcheck:
       test: ["CMD", "node", "-e", "const r=require('http').get('http://localhost:5000/',res=>process.exit(res.statusCode<500?0:1));r.on('error',()=>process.exit(1));r.setTimeout(4000,()=>{r.destroy();process.exit(1)})"]
       interval: 30s
@@ -136,9 +143,9 @@ services:
     container_name: postiz-postgres
     restart: always
     environment:
-      POSTGRES_PASSWORD: postiz-password
-      POSTGRES_USER: postiz-user
-      POSTGRES_DB: postiz-db-local
+      POSTGRES_PASSWORD: "${POSTGRES_USER}"
+      POSTGRES_USER: "${POSTGRES_PASSWORD}"
+      POSTGRES_DB: "${POSTGRES_DB}"
     volumes:
       - postgres-volume:/var/lib/postgresql/data
     networks:
@@ -179,42 +186,42 @@ services:
   # -----------------------
   # Temporal Stack
   # -----------------------
-  temporal-elasticsearch:
-    container_name: temporal-elasticsearch
-    image: elasticsearch:7.17.27
-    restart: always
-    environment:
-      - cluster.routing.allocation.disk.threshold_enabled=true
-      - cluster.routing.allocation.disk.watermark.low=512mb
-      - cluster.routing.allocation.disk.watermark.high=256mb
-      - cluster.routing.allocation.disk.watermark.flood_stage=128mb
-      - discovery.type=single-node
-      - ES_JAVA_OPTS=-Xms256m -Xmx256m
-      - xpack.security.enabled=false
-    networks:
-      - temporal-network
-    expose:
-      - 9200
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS \"http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s\" || exit 1"]
-      interval: 10s
-      timeout: 10s
-      retries: 10
-      start_period: 60s
-    volumes:
-      - temporal-elasticsearch-data:/usr/share/elasticsearch/data
+  #temporal-elasticsearch:
+    #container_name: temporal-elasticsearch
+    #image: elasticsearch:7.17.27
+    #restart: always
+    #environment:
+      #- cluster.routing.allocation.disk.threshold_enabled=true
+      #- cluster.routing.allocation.disk.watermark.low=512mb
+      #- cluster.routing.allocation.disk.watermark.high=256mb
+      #- cluster.routing.allocation.disk.watermark.flood_stage=128mb
+      #- discovery.type=single-node
+      #- ES_JAVA_OPTS=-Xms256m -Xmx256m
+      #- xpack.security.enabled=false
+    #networks:
+      #- temporal-network
+    #expose:
+      #- 9200
+    #healthcheck:
+      #test: ["CMD-SHELL", "curl -fsS \"http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s\" || exit 1"]
+      #interval: 10s
+      #timeout: 10s
+      #retries: 10
+      #start_period: 60s
+    #volumes:
+      #- temporal-elasticsearch-data:/usr/share/elasticsearch/data
 
   temporal-postgresql:
     container_name: temporal-postgresql
-    image: postgres:16
+    image: postgres:16-alpine
     restart: always
     environment:
       POSTGRES_PASSWORD: temporal
       POSTGRES_USER: temporal
     networks:
       - temporal-network
-    expose:
-      - 5432
+    #expose:
+      #- 5432
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U temporal"]
       interval: 10s
@@ -227,14 +234,14 @@ services:
   temporal:
     container_name: temporal
     restart: always
-    ports:
-      - '7233:7233'
+    #ports:
+      #- '7233:7233'
     image: temporalio/auto-setup:1.28.1
     depends_on:
       temporal-postgresql:
         condition: service_healthy
-      temporal-elasticsearch:
-        condition: service_healthy
+      #temporal-elasticsearch:
+        #condition: service_healthy
     environment:
       - DB=postgres12
       - DB_PORT=5432
@@ -242,10 +249,10 @@ services:
       - POSTGRES_PWD=temporal
       - POSTGRES_SEEDS=temporal-postgresql
       - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
-      - ENABLE_ES=true
-      - ES_SEEDS=temporal-elasticsearch
-      - ES_VERSION=v7
-      - TEMPORAL_NAMESPACE=default
+      #- ENABLE_ES=true
+      #- ES_SEEDS=temporal-elasticsearch
+      #- ES_VERSION=v7
+      #- TEMPORAL_NAMESPACE=default
     networks:
       - temporal-network
     healthcheck:
@@ -256,44 +263,44 @@ services:
       start_period: 30s
     volumes:
       - ./dynamicconfig:/etc/temporal/config/dynamicconfig
-    labels:
-      kompose.volume.type: configMap
+    #labels:
+      #kompose.volume.type: configMap
 
-  temporal-admin-tools:
-    container_name: temporal-admin-tools
-    image: temporalio/admin-tools:1.28.1-tctl-1.18.4-cli-1.4.1
-    restart: on-failure
-    environment:
-      - TEMPORAL_ADDRESS=temporal:7233
-      - TEMPORAL_CLI_ADDRESS=temporal:7233
-    networks:
-      - temporal-network
-    stdin_open: true
-    depends_on:
-      temporal:
-        condition: service_healthy
-    tty: true
+  #temporal-admin-tools:
+    #container_name: temporal-admin-tools
+    #image: temporalio/admin-tools:1.28.1-tctl-1.18.4-cli-1.4.1
+    #restart: on-failure
+    #environment:
+      #- TEMPORAL_ADDRESS=temporal:7233
+      #- TEMPORAL_CLI_ADDRESS=temporal:7233
+    #networks:
+      #- temporal-network
+    #stdin_open: true
+    #depends_on:
+      #temporal:
+        #condition: service_healthy
+    #tty: true
 
-  temporal-ui:
-    container_name: temporal-ui
-    image: temporalio/ui:2.34.0
-    restart: always
-    environment:
-      - TEMPORAL_ADDRESS=temporal:7233
-      - TEMPORAL_CORS_ORIGINS=http://127.0.0.1:3000
-    networks:
-      - temporal-network
-    ports:
-      - '8080:8080'
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-    depends_on:
-      temporal:
-        condition: service_healthy
+  #temporal-ui:
+    #container_name: temporal-ui
+    #image: temporalio/ui:2.34.0
+    #restart: always
+    #environment:
+      #- TEMPORAL_ADDRESS=temporal:7233
+      #- TEMPORAL_CORS_ORIGINS=http://127.0.0.1:3000
+    #networks:
+      #- temporal-network
+    #ports:
+      #- '8080:8080'
+    #healthcheck:
+      #test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      #interval: 30s
+      #timeout: 5s
+      #retries: 5
+      #start_period: 20s
+    #depends_on:
+      #temporal:
+        #condition: service_healthy
 
 volumes:
   postgres-volume:
@@ -311,12 +318,15 @@ volumes:
   temporal-postgres-data:
     external: false
 
-  temporal-elasticsearch-data:
-    external: false
+  #temporal-elasticsearch-data:
+    #external: false
 
 networks:
   postiz-network:
     external: false
   temporal-network:
-    driver: bridge
-    name: temporal-network
+    #driver: bridge
+    #name: temporal-network
+    external: false
+  traefik:
+    external: true
